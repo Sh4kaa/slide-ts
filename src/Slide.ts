@@ -8,8 +8,10 @@ export default class Slide {
   index: number;
   slide: Element;
   timeout: Timeout | null;
-  paused: boolean;
   pausedTimeout: Timeout | null;
+  paused: boolean;
+  thumbItems: HTMLElement[] | null;
+  thumb: HTMLElement | null;
   constructor(
     container: Element,
     slides: Element[],
@@ -20,32 +22,40 @@ export default class Slide {
     this.slides = slides;
     this.controls = controls;
     this.time = time;
+
+    this.timeout = null;
+    this.pausedTimeout = null;
     this.index = localStorage.getItem("activeSlide")
       ? Number(localStorage.getItem("activeSlide"))
       : 0;
     this.slide = this.slides[this.index];
-    this.timeout = null;
-    this.pausedTimeout = null;
     this.paused = false;
+
+    this.thumbItems = null;
+    this.thumb = null;
+
     this.init();
   }
-
-  hide(element: Element) {
-    element.classList.remove("active");
-    if (element instanceof HTMLVideoElement) {
-      element.currentTime = 0;
-      element.pause();
+  hide(el: Element) {
+    el.classList.remove("active");
+    if (el instanceof HTMLVideoElement) {
+      el.currentTime = 0;
+      el.pause();
     }
   }
-
-  //removendo active dos elementos que não quero mostrar e mostrando so que quero
   show(index: number) {
     this.index = index;
     this.slide = this.slides[this.index];
-    localStorage.setItem("activeSlide", this.index.toString());
-    this.slides.map((element) => this.hide(element));
-    this.slide.classList.add("active");
+    localStorage.setItem("activeSlide", String(this.index));
 
+    if (this.thumbItems) {
+      this.thumb = this.thumbItems[this.index];
+      this.thumbItems.forEach((el) => el.classList.remove("active"));
+      this.thumb.classList.add("active");
+    }
+
+    this.slides.forEach((el) => this.hide(el));
+    this.slide.classList.add("active");
     if (this.slide instanceof HTMLVideoElement) {
       this.autoVideo(this.slide);
     } else {
@@ -57,38 +67,30 @@ export default class Slide {
     video.play();
     let firstPlay = true;
     video.addEventListener("playing", () => {
-      this.auto(video.duration * 1000);
+      if (firstPlay) this.auto(video.duration * 1000);
       firstPlay = false;
     });
+  }
+  auto(time: number) {
+    this.timeout?.clear();
+    this.timeout = new Timeout(() => this.next(), time);
+    if (this.thumb) this.thumb.style.animationDuration = `${time}ms`;
   }
   prev() {
     if (this.paused) return;
     const prev = this.index > 0 ? this.index - 1 : this.slides.length - 1;
     this.show(prev);
-
-    /* lógica alternativa
-    if(this.index > 0) {
-      this.show(this.index - 1)
-    } */
   }
   next() {
     if (this.paused) return;
     const next = this.index + 1 < this.slides.length ? this.index + 1 : 0;
     this.show(next);
-    /* lógica alternativa
-    if (this.index < this.slides.length - 1) {
-      this.show(this.index + 1);
-    } */
   }
-  auto(time: number) {
-    this.timeout?.clear();
-    this.timeout = new Timeout(() => this.next(), time);
-  }
-
   pause() {
     this.pausedTimeout = new Timeout(() => {
       this.timeout?.pause();
       this.paused = true;
+      this.thumb?.classList.add("paused");
       if (this.slide instanceof HTMLVideoElement) this.slide.pause();
     }, 300);
   }
@@ -97,26 +99,35 @@ export default class Slide {
     if (this.paused) {
       this.paused = false;
       this.timeout?.continue();
+      this.thumb?.classList.remove("paused");
       if (this.slide instanceof HTMLVideoElement) this.slide.play();
     }
   }
-
   private addControls() {
     const prevButton = document.createElement("button");
     const nextButton = document.createElement("button");
+    prevButton.innerText = "Slide Anterior";
+    nextButton.innerText = "Próximo Slide";
     this.controls.appendChild(prevButton);
     this.controls.appendChild(nextButton);
-    this.controls.appendChild(nextButton);
-    prevButton.innerText = "Anterior";
-    nextButton.innerText = "Próximo";
+
     this.controls.addEventListener("pointerdown", () => this.pause());
     this.controls.addEventListener("pointerup", () => this.continue());
     prevButton.addEventListener("pointerup", () => this.prev());
     nextButton.addEventListener("pointerup", () => this.next());
   }
-
-  init() {
+  private addThumbItems() {
+    const thumbContainer = document.createElement("div");
+    thumbContainer.id = "slide-thumb";
+    for (let i = 0; i < this.slides.length; i++) {
+      thumbContainer.innerHTML += `<span><span class="thumb-item"></span></span>`;
+    }
+    this.controls.appendChild(thumbContainer);
+    this.thumbItems = Array.from(document.querySelectorAll(".thumb-item"));
+  }
+  private init() {
     this.addControls();
+    this.addThumbItems();
     this.show(this.index);
   }
 }
